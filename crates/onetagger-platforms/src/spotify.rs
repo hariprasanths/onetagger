@@ -215,10 +215,39 @@ impl AutotaggerSource for Spotify {
         };
 
         // Normal search
-        let query = format!("{} {}", info.artist()?, MatchingUtils::clean_title(info.title()?));
+        let title = MatchingUtils::clean_title(info.title()?);
+        let artist = MatchingUtils::clean_artists(&info.artists).join(", ");
+        let query = format!("{} {}", info.artist()?, title);
         let results = self.search_tracks(&query, 20)?;
-        let tracks = results.clone().into_iter().map(|t| full_track_to_track(t)).collect();
-        Ok(MatchingUtils::match_track(info, &tracks, config, true))
+        let tracks: Vec<Track> = results.clone().into_iter().map(|t| full_track_to_track(t)).collect();
+
+        // search with title alone and append to tracks
+        let query = format!("{}", title);
+        let results = self.search_tracks(&query, 20)?;
+        let tracks2: Vec<Track> = results.clone().into_iter().map(|t| full_track_to_track(t)).collect();
+        
+        // search with first 3 words of title alone and append to tracks
+        let query = format!("{}", title.split_whitespace().take(3).collect::<Vec<_>>().join(" "));
+        let results = self.search_tracks(&query, 20)?;
+        let tracks3: Vec<Track>  = results.clone().into_iter().map(|t| full_track_to_track(t)).collect();
+
+        // search with first 5 words of title alone and append to tracks
+        let query = format!("{}", title.split_whitespace().take(5).collect::<Vec<_>>().join(" "));
+        let results = self.search_tracks(&query, 20)?;
+        let tracks4: Vec<Track> = results.clone().into_iter().map(|t| full_track_to_track(t)).collect();
+
+        let tracks_m2: Vec<Track> = tracks.into_iter().chain(tracks2.into_iter()).collect();
+        let tracks_m3: Vec<Track> = tracks_m2.into_iter().chain(tracks3.into_iter()).collect();
+        let tracks_m4: Vec<Track> = tracks_m3.into_iter().chain(tracks4.into_iter()).collect();
+
+        let matched_tracks_with_artist = MatchingUtils::match_track(info, &tracks_m4, config, true);
+        if matched_tracks_with_artist.is_empty() {
+            // try matching without artist
+            // let matched_tracks_without_artist = MatchingUtils::match_track(info, &tracks_m4, config, false);
+            warn!("Failed to match track using normal search via Spotify - {} - {}, matchedCountWithArtist: {}", title, artist, matched_tracks_with_artist.len());
+            // return Ok(matched_tracks_without_artist);
+        }
+        Ok(matched_tracks_with_artist)
     }
 
     fn extend_track(&mut self, track: &mut Track, config: &TaggerConfig) -> Result<(), Error> {

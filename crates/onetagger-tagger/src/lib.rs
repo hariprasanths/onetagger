@@ -619,16 +619,20 @@ impl AudioFileInfo {
             return input.into_iter().map(|v| v.to_owned()).collect();
         }
         let src = input.first().unwrap();
-        if src.contains(';') {
-            return src.split(';').collect::<Vec<&str>>().into_iter().map(|v| v.to_owned()).collect();
+        // Split by common separators
+        let mut out = vec![];
+        for sep in &[" & ", " and ", ", ", " feat. ", " ft. ", " vs. ", " x ", " + ", ",", "/", ";"] {
+            if src.contains(sep) {
+                out = src.split(sep).map(|v| v.trim().to_owned()).collect();
+            }
         }
-        if src.contains(',') {
-            return src.split(',').collect::<Vec<&str>>().into_iter().map(|v| v.to_owned()).collect();
+
+        return if out.is_empty() {
+            // If no separator found, return original
+            vec![src.to_owned().to_owned()]
+        } else {
+            out
         }
-        if src.contains('/') {
-            return src.split('/').collect::<Vec<&str>>().into_iter().map(|v| v.to_owned()).collect();
-        }
-        vec![src.to_owned().to_owned()]
     }
 }
 
@@ -862,6 +866,9 @@ impl MatchingUtils {
         let input = Self::clean_title_step1(&input);
         let input = Self::clean_title_step5(&input);
         // Trim and clean again
+        let input = Self::clean_title_step1(&input);
+        let input = Self::clean_title_step8(&input);
+        // Trim and clean again
         Self::clean_title_step1(&input)
     }
 
@@ -911,9 +918,15 @@ impl MatchingUtils {
         Self::remove_special(input)
     }
 
+    /// Step 8: Remove movie, songs, song
+    fn clean_title_step8(input: &str) -> String {
+        let re = Regex::new(r" (movie|songs|song|video) ").unwrap();
+        re.replace(input, "").into_owned()
+    }
+
     /// Remove spacial characters
     pub fn remove_special(input: &str) -> String {
-        let special = ".,()[]&_\"'-/\\^";
+        let special = ".,()[]&_\"'-/\\^|";
         let mut out = input.to_string();
         for c in special.chars() {
             out = out.replace(c, "");
@@ -1048,12 +1061,20 @@ impl MatchingUtils {
         };
         let clean_title = MatchingUtils::clean_title_matching(clean_title);
 
+        // convert to Vec<String>
+        let clean_title_vector: Vec<String>  = clean_title.split_whitespace().map(|s| s.to_string()).collect();
+
         // Fuzzy match - value, track
         let mut fuzz: Vec<(f64, &Track)> = vec![];
         for track in tracks {
             // Artist
             if match_artist {
                 if !MatchingUtils::match_artist(&info.artists, &track.artists, config.strictness) {
+                    continue;
+                }
+            } else {
+                // Match album name with title
+                if !MatchingUtils::match_artist(&clean_title_vector, &track.album.iter().map(|s| s.clone()).collect(), config.strictness / 2.0) {
                     continue;
                 }
             }

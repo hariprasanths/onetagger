@@ -290,8 +290,20 @@ impl TrackImpl for Track {
                                 }
                             }
 
+                            // // clone existing covers via get_art and remove them
+                            // let existing_arts: Vec<onetagger_tag::Picture> = tag.get_art();
+                            // let existing_arts_backup = existing_arts.clone();
+                            // for art in existing_arts {
+                            //     tag.remove_art(art.kind);
+                            // }
+
                             tag.set_art(CoverType::CoverFront, "image/jpeg", Some("Cover"), data.clone());
                             cover_data = Some(data);
+
+                            // // set other covers back
+                            // for art in existing_arts_backup {
+                            //     tag.set_art(CoverType::CoverBack, &art.mime, Some(&art.description), art.data);
+                            // }
                         },
                         None => warn!("Invalid album art!")
                     } 
@@ -528,7 +540,7 @@ impl AudioFileInfoImpl for AudioFileInfo {
         info!("Recognizing on Shazam: {:?}", path.as_ref());
         match Shazam::recognize_from_file(&path) {
             Ok((shazam_track, duration)) => {
-                info!("Recognized on Shazam: {:?}: {} - {}", path.as_ref(), shazam_track.title, shazam_track.subtitle);
+                info!("Recognized on Shazam: {:?}: {} - {} - {:?} - {} - {} - {:?}", path.as_ref(), shazam_track.title, shazam_track.subtitle, shazam_track.isrc, shazam_track.url, shazam_track.key, shazam_track.albumadamid);
                 return Ok(AudioFileInfo {
                     title: Some(shazam_track.title),
                     artists: AudioFileInfo::parse_artist_tag(vec![&shazam_track.subtitle]),
@@ -861,6 +873,7 @@ impl Tagger {
                             Err(e) => {
                                 out.status = TaggingState::Skipped;
                                 out.message = Some(format!("Error loading file: {}", e));
+                                warn!("Error loading file - {}, {:?}", e, path.as_ref());
                                 return (None, out);
                             }
                         }
@@ -880,6 +893,25 @@ impl Tagger {
             out.status = TaggingState::Skipped;
             out.message = Some("Already tagged".to_string());
             return (None, out);
+        } else {
+            // Recognize using shazam
+            if config.enable_shazam && !out.used_shazam {
+                match AudioFileInfo::shazam(&path) {
+                    Ok(i) => {
+                        out.used_shazam = true;
+                        info = i;
+                    },
+                    Err(e) => {
+                        // Soft fail if shazam fails to try tagging via platforms
+                        warn!("Error shazaming file - 1 - {}, {:?}", e, path.as_ref());
+                        // out.status = TaggingState::Skipped;
+                        // out.message = Some(format!("Error loading file: {}", e));
+                        // return (None, out);
+                        // (Some(info), out)
+                        ()
+                    }
+                }
+            }
         }
 
         // Load duration for matching
