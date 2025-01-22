@@ -1,6 +1,7 @@
 use anyhow::Error;
 use chrono::NaiveDate;
 use std::time::Duration;
+use std::cmp::Ordering;
 use rspotify::clients::{BaseClient, OAuthClient};
 use rspotify::model::{SearchType, TrackId, Id, AlbumId, ArtistId, Modality};
 use rspotify::{Credentials, Config, AuthCodeSpotify, OAuth, scopes, ClientError, ClientResult};
@@ -208,7 +209,20 @@ impl AutotaggerSource for Spotify {
         if let Some(isrc) = info.isrc.as_ref() {
             let query = format!("isrc:{isrc}");
             let results = self.search_tracks(&query, 20)?;
-            let tracks: Vec<Track> = results.clone().into_iter().map(|t| full_track_to_track(t)).collect();
+            let mut tracks: Vec<Track> = results.clone().into_iter().map(|t| full_track_to_track(t)).collect();
+            // select the track having oldest release_date if multiple tracks are found
+            tracks.sort_by(|a, b| {
+                if a.release_date.is_none() || b.release_date.is_none() {
+                    Ordering::Equal
+                } else {
+                    a.release_date.as_ref().unwrap().cmp(b.release_date.as_ref().unwrap())
+                }
+            });
+
+            // // log the track names and release dates
+            // for track in &tracks {
+            //     debug!("Track: {}, Release Date: {}", track.title, track.release_date.unwrap());
+            // }
             if let Some(track) = tracks.first() {
                 return Ok(vec![TrackMatch::new_isrc(track.clone())]);
             }
