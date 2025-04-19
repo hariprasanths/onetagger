@@ -656,6 +656,17 @@ impl Tagger {
         let total_files = files.len();
         info!("Starting tagger with: {} files!", total_files);
 
+        // TODO: parametrize file extensions, make this optional
+        // Filter out mp4 files
+        files.retain(|f| {
+            let ext = f.extension().unwrap_or_default().to_string_lossy();
+            if ext == "mp4" {
+                warn!("Skipping mp4 file: {:?}", f);
+                return false;
+            }
+            true
+        });
+
         // Create thread
         let (tx, rx) = unbounded();
         let config = cfg.clone();
